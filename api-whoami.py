@@ -1,8 +1,10 @@
-import os
+#!/usr/bin/env python3
 import argparse
 import re
-import requests
-import slack
+import slack_sdk
+import ssl
+
+ssl._create_default_https_context = ssl._create_unverified_context
 
 print("====== Welcome to API Whoami ======\n")
 
@@ -52,14 +54,14 @@ def get_more_info(api_key, platform):
     return results
 
 def _get_more_slack_info(api_key, platform):
-    client = slack.WebClient(token=api_key)
+    client = slack_sdk.WebClient(token=api_key)
     # We start a couple api calls to try get a feel for what we can do with this api key
     data = {}
     try:
         ## auth_test : https://slack.com/api/auth.test => check response at https://api.slack.com/methods/auth.test
         ## this works with both bot and user api tokens
         data['auth_test'] = client.auth_test().data
-    except slack.errors.SlackApiError as e:
+    except slack_sdk.errors.SlackApiError as e:
         data['auth_test'] =  e.response
 
     if 'error' in data['auth_test']:
@@ -71,23 +73,23 @@ def _get_more_slack_info(api_key, platform):
             data['users_info'] = client.users_info(user=data['auth_test']['user_id']).data
         else:
             data['users_info'] = client.users_info(user="asdzxciu").data
-    except slack.errors.SlackApiError as e:
+    except slack_sdk.errors.SlackApiError as e:
         data['users_info'] = e.response
 
     try:
         ## conversations_info : https://slack.com/api/conversations.info => check response at https://api.slack.com/methods/conversations.info
         ## note: only works with user token type with `channels:read, groups:read, im:read, mpim:read` scope, and bot token type with `bot` scope
         data['conversations_info'] = client.conversations_info(channel="ASDJALKSBNCX123")
-    except slack.errors.SlackApiError as e:
+    except slack_sdk.errors.SlackApiError as e:
         data['conversations_info'] = e.response
 
     try:
         ## users_identity : https://slack.com/api/users.identity => check response at https://api.slack.com/methods/users.identity
         ## note: only works with user token type with `identity.basic` scope and NOT bot token type.
         data['users_identity'] = client.users_identity()
-    except slack.errors.SlackApiError as e:
+    except slack_sdk.errors.SlackApiError as e:
         data['users_identity'] = e.response
-    except slack.errors.BotUserAccessError as e:
+    except slack_sdk.errors.BotUserAccessError as e:
         data['users_identity'] = {'token' :'Bot Token cannot user users_identity API'}
 
     return _intepret_responses_slack(data, platform)
@@ -113,7 +115,11 @@ def _intepret_responses_slack(data, platform):
 
 def _add_api_response_to_summary(api, resp, heading=True):
     s = "\n\t▶ API {} returned:\n\t\t".format(api) if heading else " "
-    for k in resp.keys():
+    if type(resp) == slack_sdk.web.slack_response.SlackResponse:
+        keys = resp.data.keys()
+    else:
+        keys = resp.keys()
+    for k in keys:
         if type(resp[k]) == bool:
             # this if is specifically slack based; we may need to add for others
             if k == 'ok' or not resp[k]:
@@ -154,8 +160,6 @@ class Platform(object):
 
     def get_more_info(self,):
         pass
-
-
 
 
 if __name__ == "__main__":
